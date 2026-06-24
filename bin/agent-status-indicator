@@ -1,0 +1,143 @@
+#!/usr/bin/python3
+"""Ubuntu AppIndicator for Codex and Claude Code status."""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+
+try:
+    import gi
+
+    gi.require_version("Gtk", "3.0")
+    gi.require_version("AyatanaAppIndicator3", "0.1")
+    from gi.repository import AyatanaAppIndicator3 as AppIndicator
+    from gi.repository import GLib, Gtk
+except (ImportError, ValueError) as exc:
+    print(
+        "Missing GTK/AppIndicator bindings. Install:\n"
+        "  sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-ayatanaappindicator3-0.1",
+        file=sys.stderr,
+    )
+    raise SystemExit(1) from exc
+
+
+APP_NAME = "agent-status-indicator"
+PRIORITY = {"error": 3, "approval": 2, "working": 1, "idle": 0}
+COLORS = {
+    "idle": "#8b949e",
+    "working": "#2ea043",
+    "approval": "#d29922",
+    "error": "#f85149",
+}
+
+
+def cache_home() -> Path:
+    return Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+
+
+def state_file() -> Path:
+    return cache_home() / APP_NAME / "state.json"
+
+
+def icon_dir() -> Path:
+    installed = Path.home() / ".local" / "share" / APP_NAME / "icons"
+    if installed.exists():
+        return installed
+    return Path(__file__).resolve().parent.parent / "icons"
+
+
+def read_state() -> dict:
+    try:
+        return json.loads(state_file().read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {
+            "agents": {
+                "codex": {"state": "idle", "message": ""},
+                "claude": {"state": "idle", "message": ""},
+            }
+        }
+
+
+def combined_state(state: dict) -> str:
+    agents = state.get("agents", {})
+    result = "idle"
+    for agent in ("codex", "claude"):
+        agent_state = agents.get(agent, {}).get("state", "idle")
+        if PRIORITY.get(agent_state, 0) > PRIORITY[result]:
+            result = agent_state
+    return result
+
+
+def set_state(agent: str, status: str) -> None:
+    subprocess.Popen(
+        [str(Path(__file__).resolve().parent / "agent-status"), "update", agent, status],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+class Indicator:
+    def __init__(self) -> None:
+        self.indicator = AppIndicator.Indicator.new(
+            APP_NAME,
+            str(icon_dir() / "agent-status-idle.png"),
+            AppIndicator.IndicatorCategory.APPLICATION_STATUS,
+        )
+        self.indicator.set_status(AppIndicator.IndicatorStatus.ACTIVE)
+        self.indicator.set_menu(self.build_menu())
+        self.last_icon = ""
+        self.refresh()
+        GLib.timeout_add_seconds(1, self.refresh)
+
+    def build_menu(self) -> Gtk.Menu:
+        menu = Gtk.Menu()
+        self.summary = Gtk.MenuItem(label="Codex: idle | Claude: idle")
+        self.summary.set_sensitive(False)
+        menu.append(self.summary)
+
+        menu.append(Gtk.SeparatorMenuItem())
+        for agent in ("codex", "claude", "all"):
+            idle = Gtk.MenuItem(label=f"Set {agent} idle")
+            idle.connect("activate", lambda _item, a=agent: set_state(a, "idle"))
+            menu.append(idle)
+
+        menu.append(Gtk.SeparatorMenuItem())
+        quit_item = Gtk.MenuItem(label="Quit")
+        quit_item.connect("activate", Gtk.main_quit)
+        menu.append(quit_item)
+        menu.show_all()
+        return menu
+
+    def refresh(self) -> bool:
+        state = read_state()
+        status = combined_state(state)
+        icon_path = str(icon_dir() / f"agent-status-{status}.png")
+        if icon_path != self.last_icon:
+            self.indicator.set_icon_full(icon_path, f"Agent status: {status}")
+            self.last_icon = icon_path
+
+        agents = state.get("agents", {})
+        labels = []
+        for agent in ("codex", "claude"):
+            item = agents.get(agent, {})
+            state_name = item.get("state", "idle")
+            message = item.get("message") or ""
+            suffix = f" ({message})" if message else ""
+            labels.append(f"{agent.capitalize()}: {state_name}{suffix}")
+        self.summary.set_label(" | ".join(labels))
+        return True
+
+
+def main() -> int:
+    Indicator()
+    Gtk.main()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

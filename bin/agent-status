@@ -1,0 +1,309 @@
+#!/usr/bin/python3
+"""Small state daemon/CLI for Codex and Claude Code desktop status."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import socket
+import sys
+import time
+from pathlib import Path
+from typing import Any
+
+
+APP_NAME = "agent-status-indicator"
+VALID_AGENTS = {"codex", "claude", "all"}
+VALID_STATES = {"idle", "working", "approval", "error"}
+DEFAULT_TTL_SECONDS = 120
+MAINTENANCE_INTERVAL_SECONDS = 1
+PRIORITY = {"idle": 0, "working": 1, "approval": 2, "error": 3}
+
+
+def xdg_cache_home() -> Path:
+    return Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+
+
+def runtime_dir() -> Path:
+    base = os.environ.get("XDG_RUNTIME_DIR")
+    if base:
+        return Path(base) / APP_NAME
+    return Path("/tmp") / f"{APP_NAME}-{os.getuid()}"
+
+
+def state_path() -> Path:
+    return xdg_cache_home() / APP_NAME / "state.json"
+
+
+def socket_path() -> Path:
+    return runtime_dir() / "agent-status.sock"
+
+
+def now() -> float:
+    return time.time()
+
+
+def empty_state() -> dict[str, Any]:
+    ts = now()
+    return {
+        "version": 2,
+        "updated_at": ts,
+        "ttl_seconds": DEFAULT_TTL_SECONDS,
+        "agents": {
+            "codex": {"state": "idle", "message": "", "updated_at": ts},
+            "claude": {"state": "idle", "message": "", "updated_at": ts},
+        },
+        "sessions": {
+            "codex": {},
+            "claude": {},
+        },
+    }
+
+
+def load_state() -> dict[str, Any]:
+    path = state_path()
+    if not path.exists():
+        return empty_state()
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return empty_state()
+
+    state = empty_state()
+    state.update({k: v for k, v in loaded.items() if k not in {"agents", "sessions", "approval_hold_seconds"}})
+    if isinstance(loaded.get("agents"), dict):
+        for agent in ("codex", "claude"):
+            if isinstance(loaded["agents"].get(agent), dict):
+                state["agents"][agent].update(loaded["agents"][agent])
+    if isinstance(loaded.get("sessions"), dict):
+        for agent in ("codex", "claude"):
+            if isinstance(loaded["sessions"].get(agent), dict):
+                state["sessions"][agent] = loaded["sessions"][agent]
+    return normalize_state(state)
+
+
+def normalize_state(state: dict[str, Any]) -> dict[str, Any]:
+    ttl = int(state.get("ttl_seconds") or DEFAULT_TTL_SECONDS)
+    current = now()
+    state.setdefault("agents", {})
+    state.setdefault("sessions", {})
+    for agent in ("codex", "claude"):
+        sessions = state["sessions"].setdefault(agent, {})
+        if not isinstance(sessions, dict):
+            sessions = {}
+            state["sessions"][agent] = sessions
+
+        cleaned: dict[str, Any] = {}
+        for session_id, item in sessions.items():
+            if not isinstance(item, dict):
+                continue
+            session_state = item.get("state")
+            if session_state not in VALID_STATES:
+                session_state = "idle"
+            updated_at = float(item.get("updated_at") or current)
+            message = str(item.get("message") or "")
+            event = str(item.get("event") or "")
+            if session_state in {"idle", "working"} and current - updated_at > ttl:
+                continue
+            if session_state == "error" and current - updated_at > ttl * 10:
+                continue
+            cleaned[str(session_id)] = {
+                "state": session_state,
+                "message": message,
+                "updated_at": updated_at,
+                "event": event,
+            }
+        state["sessions"][agent] = cleaned
+        state["agents"][agent] = aggregate_agent(agent, cleaned, current)
+    state["version"] = 2
+    state["ttl_seconds"] = ttl
+    state["updated_at"] = float(state.get("updated_at") or current)
+    return state
+
+
+def aggregate_agent(agent: str, sessions: dict[str, Any], current: float) -> dict[str, Any]:
+    result = {"state": "idle", "message": "", "updated_at": current, "active_sessions": 0}
+    for session_id, item in sessions.items():
+        session_state = item.get("state", "idle")
+        if session_state != "idle":
+            result["active_sessions"] += 1
+        if PRIORITY.get(session_state, 0) > PRIORITY[result["state"]]:
+            result.update(
+                {
+                    "state": session_state,
+                    "message": item.get("message", ""),
+                    "updated_at": item.get("updated_at", current),
+                    "session": session_id,
+                }
+            )
+    return result
+
+
+def save_state(state: dict[str, Any]) -> None:
+    path = state_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(normalize_state(state), indent=2, sort_keys=True), encoding="utf-8")
+    tmp.replace(path)
+
+
+def default_session_id(agent: str) -> str:
+    return f"{agent}:manual"
+
+
+def clear_approval_sessions(sessions: dict[str, Any]) -> None:
+    for session_id, item in list(sessions.items()):
+        if not isinstance(item, dict):
+            continue
+        if item.get("state") == "approval":
+            sessions.pop(session_id, None)
+
+
+def apply_update(
+    agent: str,
+    state_name: str,
+    message: str = "",
+    session_id: str | None = None,
+    event: str = "",
+) -> dict[str, Any]:
+    if agent not in VALID_AGENTS:
+        raise ValueError(f"invalid agent: {agent}")
+    if state_name not in VALID_STATES:
+        raise ValueError(f"invalid state: {state_name}")
+
+    state = load_state()
+    ts = now()
+    targets = ("codex", "claude") if agent == "all" else (agent,)
+    for target in targets:
+        sid = session_id or default_session_id(target)
+        sessions = state.setdefault("sessions", {}).setdefault(target, {})
+        if state_name == "idle":
+            sessions.pop(sid, None)
+            clear_approval_sessions(sessions)
+        else:
+            if state_name == "working":
+                clear_approval_sessions(sessions)
+            sessions[sid] = {
+                "state": state_name,
+                "message": message,
+                "updated_at": ts,
+                "event": event,
+            }
+    state["updated_at"] = ts
+    save_state(state)
+    return state
+
+
+def send_to_daemon(payload: dict[str, Any]) -> bool:
+    path = socket_path()
+    if not path.exists():
+        return False
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.settimeout(1)
+            client.connect(str(path))
+            client.sendall((json.dumps(payload) + "\n").encode("utf-8"))
+            client.recv(4096)
+        return True
+    except OSError:
+        return False
+
+
+def command_update(args: argparse.Namespace) -> int:
+    payload = {
+        "action": "update",
+        "agent": args.agent,
+        "state": args.state,
+        "message": args.message or "",
+        "session": args.session or "",
+        "event": args.event or "",
+    }
+    if not send_to_daemon(payload):
+        apply_update(args.agent, args.state, args.message or "", args.session or None, args.event or "")
+    return 0
+
+
+def command_get(args: argparse.Namespace) -> int:
+    state = normalize_state(load_state())
+    if args.agent:
+        print(json.dumps(state["agents"][args.agent], sort_keys=True))
+    else:
+        print(json.dumps(state, sort_keys=True))
+    return 0
+
+
+def handle_client(conn: socket.socket) -> None:
+    with conn:
+        data = b""
+        while not data.endswith(b"\n"):
+            chunk = conn.recv(4096)
+            if not chunk:
+                break
+            data += chunk
+        try:
+            payload = json.loads(data.decode("utf-8"))
+            if payload.get("action") != "update":
+                raise ValueError("unsupported action")
+            apply_update(
+                str(payload.get("agent", "")),
+                str(payload.get("state", "")),
+                str(payload.get("message", "")),
+                str(payload.get("session") or "") or None,
+                str(payload.get("event") or ""),
+            )
+            conn.sendall(b'{"ok":true}\n')
+        except Exception as exc:  # Keep daemon alive for bad hook payloads.
+            conn.sendall(json.dumps({"ok": False, "error": str(exc)}).encode("utf-8") + b"\n")
+
+
+def command_daemon(args: argparse.Namespace) -> int:
+    runtime_dir().mkdir(parents=True, exist_ok=True)
+    save_state(load_state())
+    path = socket_path()
+    if path.exists():
+        path.unlink()
+
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+        server.bind(str(path))
+        os.chmod(path, 0o600)
+        server.listen(16)
+        server.settimeout(MAINTENANCE_INTERVAL_SECONDS)
+        print(f"agent-status daemon listening on {path}", flush=True)
+        while True:
+            save_state(load_state())
+            try:
+                conn, _ = server.accept()
+            except TimeoutError:
+                continue
+            handle_client(conn)
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Track Codex/Claude Code status for a desktop indicator.")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    daemon = sub.add_parser("daemon", help="Run the local status socket daemon.")
+    daemon.set_defaults(func=command_daemon)
+
+    update = sub.add_parser("update", help="Update one agent state.")
+    update.add_argument("agent", choices=sorted(VALID_AGENTS))
+    update.add_argument("state", choices=sorted(VALID_STATES))
+    update.add_argument("message", nargs="?", default="")
+    update.add_argument("--session", default="", help="Stable per-thread/session identifier.")
+    update.add_argument("--event", default="", help="Source event name for diagnostics.")
+    update.set_defaults(func=command_update)
+
+    get = sub.add_parser("get", help="Print current state as JSON.")
+    get.add_argument("agent", nargs="?", choices=sorted(VALID_AGENTS - {"all"}))
+    get.set_defaults(func=command_get)
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv or sys.argv[1:])
+    return int(args.func(args))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,67 @@
+#!/usr/bin/python3
+"""Run `codex exec --json` and mirror JSONL lifecycle events to agent-status."""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+
+STATUS = Path(__file__).resolve().parent / "agent-status"
+
+
+def update(state: str, message: str = "", session: str = "") -> None:
+    sid = session or f"codex:exec:{os.getpid()}"
+    subprocess.run([str(STATUS), "update", "codex", state, message, "--session", sid], check=False)
+
+
+def state_for_event(event: dict) -> tuple[str | None, str]:
+    event_type = event.get("type")
+    if event_type in {"thread.started", "turn.started"}:
+        return "working", event_type
+    if event_type == "turn.completed":
+        return "idle", event_type
+    if event_type in {"turn.failed", "error"}:
+        return "error", str(event.get("message") or event_type)
+    item = event.get("item")
+    if isinstance(item, dict) and item.get("type") in {"command_execution", "tool_call"}:
+        status = item.get("status")
+        if status == "in_progress":
+            return "working", item.get("type", "")
+        if status == "failed":
+            return "error", item.get("type", "")
+    return None, ""
+
+
+def main(argv: list[str]) -> int:
+    cmd = ["codex", "exec", "--json", *argv]
+    session = f"codex:exec:{os.getpid()}"
+    update("working", "codex exec", session)
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=None, text=True)
+    assert proc.stdout is not None
+    try:
+        for line in proc.stdout:
+            print(line, end="", flush=True)
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if event.get("type") == "thread.started" and event.get("thread_id"):
+                session = f"codex:{event['thread_id']}"
+            state, message = state_for_event(event)
+            if state:
+                update(state, message, session)
+    finally:
+        returncode = proc.wait()
+        if returncode == 0:
+            update("idle", "completed", session)
+        else:
+            update("error", f"exit {returncode}", session)
+    return returncode
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

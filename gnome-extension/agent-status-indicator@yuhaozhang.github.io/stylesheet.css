@@ -1,0 +1,27 @@
+.agent-status-box {
+  spacing: 6px;
+  padding: 0 6px;
+}
+
+.agent-status-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 99px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+}
+
+.agent-status-idle {
+  background-color: #8b949e;
+}
+
+.agent-status-working {
+  background-color: #2ea043;
+}
+
+.agent-status-approval {
+  background-color: #d29922;
+}
+
+.agent-status-error {
+  background-color: #f85149;
+}

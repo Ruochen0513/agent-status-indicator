@@ -1,0 +1,14 @@
+[Unit]
+Description=Agent status top-bar indicator
+After=graphical-session.target agent-status.service
+Wants=agent-status.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/agent-status-indicator
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

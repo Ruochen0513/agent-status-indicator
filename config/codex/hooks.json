@@ -1,0 +1,80 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "agent-status-hook --agent codex --event SessionStart",
+            "timeout": 5,
+            "statusMessage": "Updating Codex status"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "agent-status-hook --agent codex --event UserPromptSubmit",
+            "timeout": 5,
+            "statusMessage": "Updating Codex status"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "agent-status-hook --agent codex --event PreToolUse",
+            "timeout": 5,
+            "statusMessage": "Updating Codex status"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "agent-status-hook --agent codex --event PermissionRequest",
+            "timeout": 5,
+            "statusMessage": "Updating Codex status"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "agent-status-hook --agent codex --event Stop",
+            "timeout": 5,
+            "statusMessage": "Updating Codex status"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "agent-status-hook --agent codex --event PostToolUse",
+            "timeout": 5,
+            "statusMessage": "Updating Codex status"
+          }
+        ]
+      }
+    ]
+  }
+}

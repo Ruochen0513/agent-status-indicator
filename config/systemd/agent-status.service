@@ -1,0 +1,11 @@
+[Unit]
+Description=Agent status socket daemon
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/agent-status daemon
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

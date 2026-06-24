@@ -1,0 +1,9 @@
+{
+  "uuid": "agent-status-indicator@yuhaozhang.github.io",
+  "name": "Agent Status Indicator",
+  "description": "Show local Codex and Claude Code status in the GNOME top bar.",
+  "shell-version": [
+    "46"
+  ],
+  "url": "https://github.com/yuhaozhang/agent-status-indicator"
+}

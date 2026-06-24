@@ -1,0 +1,121 @@
+#!/usr/bin/python3
+"""Generic hook adapter for Codex and Claude Code lifecycle events."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+
+EVENT_TO_STATE = {
+    "SessionStart": "idle",
+    "UserPromptSubmit": "working",
+    "PreToolUse": "working",
+    "PostToolUse": "working",
+    "PermissionRequest": "approval",
+    "Notification": "approval",
+    "Stop": "idle",
+    "SubagentStop": "idle",
+    "StopFailure": "error",
+    "PostToolUseFailure": "error",
+    "Error": "error",
+}
+
+
+def parse_stdin() -> dict:
+    raw = sys.stdin.read().strip()
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return {"raw": raw[:200]}
+
+
+def message_from_payload(payload: dict) -> str:
+    for key in ("message", "reason", "error", "tool_name", "toolName"):
+        value = payload.get(key)
+        if isinstance(value, str) and value:
+            return value[:120]
+    return ""
+
+
+def nested_get(payload: dict, path: tuple[str, ...]) -> str:
+    value = payload
+    for key in path:
+        if not isinstance(value, dict):
+            return ""
+        value = value.get(key)
+    return value if isinstance(value, str) else ""
+
+
+def session_from_payload(payload: dict, agent: str) -> str:
+    candidates = [
+        ("session_id",),
+        ("sessionId",),
+        ("thread_id",),
+        ("threadId",),
+        ("conversation_id",),
+        ("conversationId",),
+        ("transcript_path",),
+        ("transcriptPath",),
+        ("cwd",),
+        ("params", "threadId"),
+        ("params", "thread_id"),
+    ]
+    for path in candidates:
+        value = nested_get(payload, path)
+        if value:
+            return f"{agent}:{value}"
+
+    for key in (
+        "CODEX_SESSION_ID",
+        "CODEX_THREAD_ID",
+        "CLAUDE_SESSION_ID",
+        "CLAUDE_CONVERSATION_ID",
+        "CLAUDE_PROJECT_DIR",
+        "PWD",
+    ):
+        value = os.environ.get(key)
+        if value:
+            return f"{agent}:{key}:{value}"
+
+    return f"{agent}:ppid:{os.getppid()}"
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--agent", choices=["codex", "claude"], required=True)
+    parser.add_argument("--event", required=True)
+    parser.add_argument("--state", choices=["idle", "working", "approval", "error"])
+    parser.add_argument("--session", default="")
+    args = parser.parse_args()
+
+    payload = parse_stdin()
+    state = args.state or EVENT_TO_STATE.get(args.event, "working")
+    message = message_from_payload(payload) or args.event
+    session_id = args.session or session_from_payload(payload, args.agent)
+    status_cli = Path(__file__).resolve().parent / "agent-status"
+    subprocess.run(
+        [
+            str(status_cli),
+            "update",
+            args.agent,
+            state,
+            message,
+            "--session",
+            session_id,
+            "--event",
+            args.event,
+        ],
+        check=False,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
