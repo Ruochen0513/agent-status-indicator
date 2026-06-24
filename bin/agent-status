@@ -152,12 +152,24 @@ def default_session_id(agent: str) -> str:
     return f"{agent}:manual"
 
 
-def clear_approval_sessions(sessions: dict[str, Any]) -> None:
+def clear_sessions_by_state(sessions: dict[str, Any], states: set[str]) -> None:
     for session_id, item in list(sessions.items()):
         if not isinstance(item, dict):
             continue
-        if item.get("state") == "approval":
+        if item.get("state") in states:
             sessions.pop(session_id, None)
+
+
+def clear_approval_sessions(sessions: dict[str, Any]) -> None:
+    clear_sessions_by_state(sessions, {"approval"})
+
+
+def clear_active_sessions(sessions: dict[str, Any]) -> None:
+    clear_sessions_by_state(sessions, {"working", "approval"})
+
+
+def is_terminal_idle_event(event: str) -> bool:
+    return event in {"Stop", "SubagentStop", "SessionStart"}
 
 
 def apply_update(
@@ -180,7 +192,10 @@ def apply_update(
         sessions = state.setdefault("sessions", {}).setdefault(target, {})
         if state_name == "idle":
             sessions.pop(sid, None)
-            clear_approval_sessions(sessions)
+            if is_terminal_idle_event(event):
+                clear_active_sessions(sessions)
+            else:
+                clear_approval_sessions(sessions)
         else:
             if state_name == "working":
                 clear_approval_sessions(sessions)

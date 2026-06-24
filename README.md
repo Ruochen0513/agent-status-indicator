@@ -25,7 +25,7 @@ red > yellow > green > gray
 
 Example: if one Codex session is working and another Codex session is waiting for approval, the indicator is yellow.
 
-Approval requests are cleared as soon as the same agent reports `working` again after approval. In practice this is usually triggered by `PreToolUse` or `PostToolUse`. There is no time-based fallback; if no follow-up event arrives, the session stays yellow until another hook or manual status update changes it.
+Approval requests are cleared as soon as the same agent reports `working` again after approval. In practice this is usually triggered by `PreToolUse` or `PostToolUse`. `Stop`-style events clear active working/approval sessions, so interrupting an agent turn should return the indicator to gray. There is no time-based fallback; if no follow-up event arrives, the session stays in its last state until another hook or manual status update changes it.
 
 ## Features
 
@@ -90,7 +90,7 @@ sudo apt install gir1.2-ayatanaappindicator3-0.1
 Clone the repository:
 
 ```bash
-git clone https://github.com/yuhaozhang/agent-status-indicator.git
+git clone https://github.com/Ruochen0513/agent-status-indicator.git
 cd agent-status-indicator
 ```
 
@@ -145,7 +145,7 @@ Diagnostics:
 agent-status get
 agent-status get codex
 systemctl --user status agent-status.service
-gnome-extensions info agent-status-indicator@yuhaozhang.github.io
+gnome-extensions info agent-status-indicator@Ruochen0513.github.io
 ```
 
 Session-scoped manual test:
@@ -175,7 +175,7 @@ The default installer creates or modifies these files and directories:
 ~/.local/bin/agent-status-hook
 ~/.local/bin/agent-status-indicator
 ~/.local/bin/codex-status-exec
-~/.local/share/gnome-shell/extensions/agent-status-indicator@yuhaozhang.github.io/
+~/.local/share/gnome-shell/extensions/agent-status-indicator@Ruochen0513.github.io/
 ~/.local/share/agent-status-indicator/icons/
 ~/.config/systemd/user/agent-status.service
 ~/.config/systemd/user/agent-status-indicator.service
@@ -194,7 +194,7 @@ The installer also runs:
 systemctl --user daemon-reload
 systemctl --user enable --now agent-status.service
 systemctl --user restart agent-status.service
-gnome-extensions enable agent-status-indicator@yuhaozhang.github.io
+gnome-extensions enable agent-status-indicator@Ruochen0513.github.io
 ```
 
 The default installer disables the legacy AppIndicator user service if present:
@@ -273,7 +273,7 @@ If the dot stays gray:
 1. Check the extension:
 
    ```bash
-   gnome-extensions info agent-status-indicator@yuhaozhang.github.io
+   gnome-extensions info agent-status-indicator@Ruochen0513.github.io
    ```
 
 2. Check the daemon:
@@ -319,7 +319,7 @@ config/
   claude/settings.example.json
   systemd/*.service
 gnome-extension/
-  agent-status-indicator@yuhaozhang.github.io/
+  agent-status-indicator@Ruochen0513.github.io/
 icons/
 scripts/
   package-extension.sh
@@ -360,7 +360,7 @@ Agent Status Indicator 是一个 GNOME Shell 顶栏插件和本地状态守护�
 
 例如：一个 Codex 会话正在 working，另一个 Codex 会话正在等待授权，此时顶栏显示黄色。
 
-授权请求会在同一个 agent 后续上报 `working` 时被清除。实际中这通常由 `PreToolUse` 或 `PostToolUse` hook 触发。项目没有基于时间的自动回落逻辑；如果没有后续 hook 事件，状态会保持黄色，直到新的 hook 或手动状态更新改变它。
+授权请求会在同一个 agent 后续上报 `working` 时被清除。实际中这通常由 `PreToolUse` 或 `PostToolUse` hook 触发。`Stop` 类事件会清理活跃的 working/approval session，因此中断一次 agent turn 后应回到灰色。项目没有基于时间的自动回落逻辑；如果没有后续 hook 事件，状态会保持在最后一次状态，直到新的 hook 或手动状态更新改变它。
 
 ## 功能
 
@@ -425,7 +425,7 @@ sudo apt install gir1.2-ayatanaappindicator3-0.1
 克隆仓库：
 
 ```bash
-git clone https://github.com/yuhaozhang/agent-status-indicator.git
+git clone https://github.com/Ruochen0513/agent-status-indicator.git
 cd agent-status-indicator
 ```
 
@@ -480,7 +480,7 @@ agent-status update all idle
 agent-status get
 agent-status get codex
 systemctl --user status agent-status.service
-gnome-extensions info agent-status-indicator@yuhaozhang.github.io
+gnome-extensions info agent-status-indicator@Ruochen0513.github.io
 ```
 
 按 session 测试：
@@ -510,7 +510,7 @@ codex-status-exec "summarize this repository"
 ~/.local/bin/agent-status-hook
 ~/.local/bin/agent-status-indicator
 ~/.local/bin/codex-status-exec
-~/.local/share/gnome-shell/extensions/agent-status-indicator@yuhaozhang.github.io/
+~/.local/share/gnome-shell/extensions/agent-status-indicator@Ruochen0513.github.io/
 ~/.local/share/agent-status-indicator/icons/
 ~/.config/systemd/user/agent-status.service
 ~/.config/systemd/user/agent-status-indicator.service
@@ -529,7 +529,7 @@ $XDG_RUNTIME_DIR/agent-status-indicator/agent-status.sock
 systemctl --user daemon-reload
 systemctl --user enable --now agent-status.service
 systemctl --user restart agent-status.service
-gnome-extensions enable agent-status-indicator@yuhaozhang.github.io
+gnome-extensions enable agent-status-indicator@Ruochen0513.github.io
 ```
 
 如果存在旧版 AppIndicator user service，默认安装会禁用它：
@@ -608,7 +608,7 @@ socket 权限为 `0600`，只有当前用户可以写入。
 1. 检查扩展：
 
    ```bash
-   gnome-extensions info agent-status-indicator@yuhaozhang.github.io
+   gnome-extensions info agent-status-indicator@Ruochen0513.github.io
    ```
 
 2. 检查 daemon：
@@ -654,7 +654,7 @@ config/
   claude/settings.example.json
   systemd/*.service
 gnome-extension/
-  agent-status-indicator@yuhaozhang.github.io/
+  agent-status-indicator@Ruochen0513.github.io/
 icons/
 scripts/
   package-extension.sh

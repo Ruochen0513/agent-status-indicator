@@ -35,7 +35,7 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-gnome-extensions disable agent-status-indicator@yuhaozhang.github.io 2>/dev/null || true
+gnome-extensions disable agent-status-indicator@Ruochen0513.github.io 2>/dev/null || true
 systemctl --user disable --now agent-status.service 2>/dev/null || true
 systemctl --user disable --now agent-status-indicator.service 2>/dev/null || true
 systemctl --user daemon-reload
@@ -46,7 +46,7 @@ rm -f "$HOME/.local/bin/agent-status-indicator"
 rm -f "$HOME/.local/bin/codex-status-exec"
 rm -f "$HOME/.config/systemd/user/agent-status.service"
 rm -f "$HOME/.config/systemd/user/agent-status-indicator.service"
-rm -rf "$HOME/.local/share/gnome-shell/extensions/agent-status-indicator@yuhaozhang.github.io"
+rm -rf "$HOME/.local/share/gnome-shell/extensions/agent-status-indicator@Ruochen0513.github.io"
 rm -rf "$HOME/.local/share/agent-status-indicator"
 
 if [[ "$KEEP_CONFIG" -eq 0 ]]; then
