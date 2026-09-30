@@ -2,9 +2,9 @@
 
 [English](#agent-status-indicator) | [中文](#中文说明)
 
-Agent Status Indicator is a GNOME Shell extension and small local status daemon for showing local Codex and Claude Code activity in the GNOME top bar.
+Agent Status Indicator is a cross-platform desktop indicator and GNOME Shell extension for showing local Codex and Claude Code activity.
 
-It is designed for people who keep multiple coding-agent terminals open and want a quick desktop-level signal for whether an agent is working, idle, waiting for approval, or errored.
+It is designed for people who keep multiple coding-agent terminals open and want a quick desktop-level signal for whether an agent is working, idle, waiting for approval, or errored. The desktop app is a small floating circle that can be dragged anywhere and customized without GNOME.
 
 ## Effect
 
@@ -25,11 +25,14 @@ red > yellow > green > gray
 
 Example: if one Codex session is working and another Codex session is waiting for approval, the indicator is yellow.
 
-Approval requests are cleared as soon as the same agent reports `working` again after approval. In practice this is usually triggered by `PreToolUse` or `PostToolUse`. `Stop`-style events clear active working/approval sessions, so interrupting an agent turn should return the indicator to gray. There is no time-based fallback; if no follow-up event arrives, the session stays in its last state until another hook or manual status update changes it.
+Approval requests are cleared as soon as the same session reports `working` again. `Stop`-style events clear only the session that emitted the event, so concurrent sessions do not interrupt each other. Idle and working sessions expire after the configured state TTL (two minutes by default); error sessions remain visible longer for diagnosis.
 
 ## Features
 
 - GNOME Shell top-bar indicator.
+- Cross-platform floating desktop app for Linux, macOS, and Windows.
+- Drag-to-position circle with persistent location and settings.
+- Custom colors, size, opacity, click action, and always-on-top behavior.
 - Codex hook integration.
 - Claude Code hook integration.
 - Per-session state tracking, so concurrent sessions do not overwrite each other.
@@ -53,7 +56,7 @@ agent-status daemon  <---- agent-status CLI / codex-status-exec
 ~/.cache/agent-status-indicator/state.json
         |
         v
-GNOME Shell extension reads state.json once per second
+GNOME Shell extension or desktop app reads state.json
 ```
 
 The status daemon stores state in two levels:
@@ -61,16 +64,15 @@ The status daemon stores state in two levels:
 - `sessions.codex` and `sessions.claude`: individual session state.
 - `agents.codex` and `agents.claude`: aggregated state used by the GNOME extension.
 
-This avoids the common problem where two agent sessions race and overwrite one global status value.
+This avoids the common problem where two agent sessions race and overwrite one global status value. State mutations use a small cross-platform lock and atomic file replacement.
 
 The default version does not scan running processes. Existing Codex or Claude Code sessions must be restarted after hook installation so they load the hook configuration.
 
 ## Requirements
 
-- Ubuntu or another GNOME Shell desktop.
-- GNOME Shell 46 is tested.
-- Python 3 at `/usr/bin/python3`.
-- `systemd --user`.
+- GNOME mode: Ubuntu or another GNOME Shell desktop. GNOME Shell 46 is tested.
+- Desktop mode: Python 3.10+ with Tkinter, or a packaged build created with PyInstaller.
+- Linux daemon mode additionally uses `systemd --user`; macOS and Windows use direct state-file updates when a Unix socket is unavailable.
 - Codex and/or Claude Code for automatic status updates.
 
 Install common Ubuntu dependencies:
@@ -79,7 +81,7 @@ Install common Ubuntu dependencies:
 sudo apt install python3-gi gir1.2-gtk-3.0
 ```
 
-The legacy AppIndicator script is included but disabled by default. If you want to experiment with it, also install:
+The legacy AppIndicator script is included for older Ubuntu environments. If you want to use it, also install:
 
 ```bash
 sudo apt install gir1.2-ayatanaappindicator3-0.1
@@ -99,6 +101,23 @@ Install the GNOME extension, CLI scripts, icons, and user-level daemon:
 ```bash
 ./install.sh
 ```
+
+The installer also installs the `agent-status-desktop` command. Start the floating indicator with:
+
+```bash
+agent-status-desktop
+```
+
+The first launch places the circle near the bottom-right corner. Drag it to any position, right-click it, and open **Settings** to customize colors, size, opacity, click behavior, and always-on-top mode. Settings are stored in the platform user configuration directory.
+
+For a standalone desktop executable, build on the target platform:
+
+```bash
+python3 -m pip install pyinstaller
+./scripts/build-desktop.sh
+```
+
+The generated `dist/AgentStatusIndicator` application is platform-specific. Tkinter is included in the Windows and macOS Python installers; on Debian/Ubuntu install `python3-tk` for source execution. On Linux, optional desktop autostart is available by copying `config/autostart/agent-status-indicator.desktop` to `~/.config/autostart/`.
 
 By default, the installer does not modify Codex or Claude Code hook files. To merge the provided hook examples into your user config:
 
@@ -175,6 +194,7 @@ The default installer creates or modifies these files and directories:
 ~/.local/bin/agent-status-hook
 ~/.local/bin/agent-status-indicator
 ~/.local/bin/codex-status-exec
+~/.local/bin/agent-status-desktop
 ~/.local/share/gnome-shell/extensions/agent-status-indicator@Ruochen0513.github.io/
 ~/.local/share/agent-status-indicator/icons/
 ~/.config/systemd/user/agent-status.service
@@ -186,6 +206,7 @@ At runtime, the daemon creates:
 ```text
 ~/.cache/agent-status-indicator/state.json
 $XDG_RUNTIME_DIR/agent-status-indicator/agent-status.sock
+~/.config/agent-status-indicator/desktop.json (Linux; platform equivalent on macOS/Windows)
 ```
 
 The installer also runs:
@@ -232,7 +253,7 @@ If the file already exists, the installer writes a timestamped backup next to it
 - It does not require root privileges.
 - It does not install system-wide files.
 - It does not send data to the network.
-- It does not scan running processes in the default version.
+- It does not scan running processes in the default version; an agent must emit a hook event.
 - It does not edit project files.
 - It does not read full Codex or Claude conversation logs. It only receives the small JSON hook payload passed by the agent runtime.
 

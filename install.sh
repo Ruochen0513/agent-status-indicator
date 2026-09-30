@@ -51,18 +51,25 @@ install -m 0755 "$ROOT/bin/agent-status" "$HOME/.local/bin/agent-status"
 install -m 0755 "$ROOT/bin/agent-status-indicator" "$HOME/.local/bin/agent-status-indicator"
 install -m 0755 "$ROOT/bin/agent-status-hook" "$HOME/.local/bin/agent-status-hook"
 install -m 0755 "$ROOT/bin/codex-status-exec" "$HOME/.local/bin/codex-status-exec"
+install -m 0755 "$ROOT/bin/agent-status-desktop" "$HOME/.local/bin/agent-status-desktop"
 install -m 0644 "$ROOT/icons"/agent-status-*.png "$HOME/.local/share/agent-status-indicator/icons/"
-install -m 0644 "$ROOT/config/systemd/agent-status.service" "$HOME/.config/systemd/user/agent-status.service"
-install -m 0644 "$ROOT/config/systemd/agent-status-indicator.service" "$HOME/.config/systemd/user/agent-status-indicator.service"
+if command -v systemctl >/dev/null 2>&1 && [[ "$(uname -s)" == "Linux" ]]; then
+  install -m 0644 "$ROOT/config/systemd/agent-status.service" "$HOME/.config/systemd/user/agent-status.service"
+  install -m 0644 "$ROOT/config/systemd/agent-status-indicator.service" "$HOME/.config/systemd/user/agent-status-indicator.service"
+fi
 install -m 0644 "$ROOT/gnome-extension/agent-status-indicator@Ruochen0513.github.io/metadata.json" "$HOME/.local/share/gnome-shell/extensions/agent-status-indicator@Ruochen0513.github.io/metadata.json"
 install -m 0644 "$ROOT/gnome-extension/agent-status-indicator@Ruochen0513.github.io/extension.js" "$HOME/.local/share/gnome-shell/extensions/agent-status-indicator@Ruochen0513.github.io/extension.js"
 install -m 0644 "$ROOT/gnome-extension/agent-status-indicator@Ruochen0513.github.io/stylesheet.css" "$HOME/.local/share/gnome-shell/extensions/agent-status-indicator@Ruochen0513.github.io/stylesheet.css"
 
-systemctl --user daemon-reload
-systemctl --user enable --now agent-status.service
-systemctl --user restart agent-status.service
-systemctl --user disable --now agent-status-indicator.service 2>/dev/null || true
-gnome-extensions enable agent-status-indicator@Ruochen0513.github.io 2>/dev/null || true
+if command -v systemctl >/dev/null 2>&1 && [[ "$(uname -s)" == "Linux" ]]; then
+  systemctl --user daemon-reload
+  systemctl --user enable --now agent-status.service
+  systemctl --user restart agent-status.service
+  systemctl --user disable --now agent-status-indicator.service 2>/dev/null || true
+fi
+if command -v gnome-extensions >/dev/null 2>&1; then
+  gnome-extensions enable agent-status-indicator@Ruochen0513.github.io 2>/dev/null || true
+fi
 
 if [[ "$MERGE_CODEX_HOOKS" -eq 1 || "$MERGE_CLAUDE_HOOKS" -eq 1 ]]; then
   ROOT="$ROOT" MERGE_CODEX_HOOKS="$MERGE_CODEX_HOOKS" MERGE_CLAUDE_HOOKS="$MERGE_CLAUDE_HOOKS" /usr/bin/python3 - <<'PY'

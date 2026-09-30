@@ -66,7 +66,8 @@ export default class AgentStatusExtension extends Extension {
         const agents = state.agents || {};
         for (const name of ['codex', 'claude']) {
             const agentState = agents[name]?.state || 'idle';
-            if ((PRIORITY[agentState] || 0) > PRIORITY[result])
+            if (Object.prototype.hasOwnProperty.call(PRIORITY, agentState) &&
+                PRIORITY[agentState] > PRIORITY[result])
                 result = agentState;
         }
         return result;

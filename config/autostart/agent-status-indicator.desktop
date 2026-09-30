@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Agent Status Indicator
+Comment=Show local Codex and Claude Code activity
+Exec=agent-status-desktop
+Terminal=false
+Categories=Utility;
+X-GNOME-Autostart-enabled=true
