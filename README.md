@@ -119,6 +119,8 @@ python3 -m pip install pyinstaller
 
 The generated `dist/AgentStatusIndicator` application is platform-specific. Tkinter is included in the Windows and macOS Python installers; on Debian/Ubuntu install `python3-tk` for source execution. On Linux, optional desktop autostart is available by copying `config/autostart/agent-status-indicator.desktop` to `~/.config/autostart/`.
 
+On Windows, run `powershell -ExecutionPolicy Bypass -File scripts/install-windows.ps1` from the repository, open a new terminal, and run `agent-status-desktop`. The installer adds the command wrappers to the current user's `PATH` and stores state under `%LOCALAPPDATA%`.
+
 By default, the installer does not modify Codex or Claude Code hook files. To merge the provided hook examples into your user config:
 
 ```bash
@@ -332,6 +334,7 @@ rg "PostToolUse" ~/.codex/hooks.json
 ```text
 bin/
   agent-status            status daemon and CLI
+  agent-status-desktop    cross-platform floating desktop app
   agent-status-hook       Codex/Claude hook adapter
   codex-status-exec       wrapper for codex exec --json
   agent-status-indicator  legacy AppIndicator UI
@@ -343,6 +346,8 @@ gnome-extension/
   agent-status-indicator@Ruochen0513.github.io/
 icons/
 scripts/
+  build-desktop.sh
+  install-windows.ps1
   package-extension.sh
 install.sh
 uninstall.sh
@@ -381,11 +386,14 @@ Agent Status Indicator 是一个 GNOME Shell 顶栏插件和本地状态守护�
 
 例如：一个 Codex 会话正在 working，另一个 Codex 会话正在等待授权，此时顶栏显示黄色。
 
-授权请求会在同一个 agent 后续上报 `working` 时被清除。实际中这通常由 `PreToolUse` 或 `PostToolUse` hook 触发。`Stop` 类事件会清理活跃的 working/approval session，因此中断一次 agent turn 后应回到灰色。项目没有基于时间的自动回落逻辑；如果没有后续 hook 事件，状态会保持在最后一次状态，直到新的 hook 或手动状态更新改变它。
+授权请求会在同一个 session 后续上报 `working` 时被清除。`Stop` 类事件只清理产生该事件的 session，并发会话不会互相中断。working/idle 状态在两分钟没有新事件后自动过期，error 状态会保留更长时间用于诊断。
 
 ## 功能
 
 - GNOME Shell 顶栏状态点。
+- 支持 Linux、macOS、Windows 的悬浮桌面圆点程序。
+- 圆点可拖动到任意位置，并保存位置和设置。
+- 可自定义颜色、大小、透明度、点击行为和置顶模式。
 - Codex hook 集成。
 - Claude Code hook 集成。
 - 按 session 记录状态，多个并发会话不会互相覆盖。
@@ -409,7 +417,7 @@ agent-status daemon  <---- agent-status CLI / codex-status-exec
 ~/.cache/agent-status-indicator/state.json
         |
         v
-GNOME Shell extension 每秒读取 state.json
+GNOME Shell extension 或桌面程序读取 state.json
 ```
 
 状态文件分两层：
@@ -417,16 +425,15 @@ GNOME Shell extension 每秒读取 state.json
 - `sessions.codex` 和 `sessions.claude`：每个会话自己的状态。
 - `agents.codex` 和 `agents.claude`：聚合后的状态，供 GNOME 插件显示。
 
-这样可以避免多个 agent 会话同时运行时互相覆盖同一个全局状态值。
+这样可以避免多个 agent 会话同时运行时互相覆盖同一个全局状态值。状态更新使用跨平台锁和原子替换，避免并发 hook 丢失更新。
 
 默认版本不会扫描运行中的进程。安装 hooks 后，已经打开的 Codex 或 Claude Code 会话需要重启，才能加载新的 hook 配置。
 
 ## 环境要求
 
-- Ubuntu 或其他 GNOME Shell 桌面环境。
-- 已测试 GNOME Shell 46。
-- `/usr/bin/python3`。
-- `systemd --user`。
+- GNOME 模式：Ubuntu 或其他 GNOME Shell 桌面环境，已测试 GNOME Shell 46。
+- 桌面模式：Python 3.10+ 和 Tkinter，或使用 PyInstaller 构建的独立程序。
+- Linux daemon 模式额外需要 `systemd --user`；macOS 和 Windows 在 Unix socket 不可用时会直接更新状态文件。
 - 如果需要自动状态更新，需要安装 Codex 和/或 Claude Code。
 
 Ubuntu 常见依赖：
@@ -455,6 +462,25 @@ cd agent-status-indicator
 ```bash
 ./install.sh
 ```
+
+安装脚本也会安装 `agent-status-desktop`。启动跨平台悬浮圆点：
+
+```bash
+agent-status-desktop
+```
+
+首次启动会把圆点放在屏幕右下角。拖动圆点即可改变位置；右键打开菜单并进入 **Settings**，可以修改颜色、大小、透明度、点击行为和置顶模式。设置会保存在当前用户的配置目录。
+
+需要独立桌面程序时，请在目标平台构建：
+
+```bash
+python3 -m pip install pyinstaller
+./scripts/build-desktop.sh
+```
+
+生成的 `dist/AgentStatusIndicator` 仅适用于构建它的平台。Debian/Ubuntu 从源码运行时需要 `python3-tk`。Linux 可选地将 `config/autostart/agent-status-indicator.desktop` 复制到 `~/.config/autostart/` 实现登录自动启动。
+
+Windows 可以在仓库目录执行 `powershell -ExecutionPolicy Bypass -File scripts/install-windows.ps1`，打开新的终端后运行 `agent-status-desktop`。脚本会把命令包装器加入当前用户的 `PATH`，状态文件保存在 `%LOCALAPPDATA%`。
 
 默认情况下，安装脚本不会修改 Codex 或 Claude Code 的 hook 配置。若要把项目提供的 hook 示例合并到用户配置中：
 
@@ -531,6 +557,7 @@ codex-status-exec "summarize this repository"
 ~/.local/bin/agent-status-hook
 ~/.local/bin/agent-status-indicator
 ~/.local/bin/codex-status-exec
+~/.local/bin/agent-status-desktop
 ~/.local/share/gnome-shell/extensions/agent-status-indicator@Ruochen0513.github.io/
 ~/.local/share/agent-status-indicator/icons/
 ~/.config/systemd/user/agent-status.service
@@ -542,6 +569,7 @@ codex-status-exec "summarize this repository"
 ```text
 ~/.cache/agent-status-indicator/state.json
 $XDG_RUNTIME_DIR/agent-status-indicator/agent-status.sock
+~/.config/agent-status-indicator/desktop.json（Linux；macOS/Windows 使用对应平台目录）
 ```
 
 安装脚本还会执行：
