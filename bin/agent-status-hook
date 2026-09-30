@@ -100,9 +100,12 @@ def main() -> int:
     message = message_from_payload(payload) or args.event
     session_id = args.session or session_from_payload(payload, args.agent)
     status_cli = Path(__file__).resolve().parent / "agent-status"
+    status_command = [str(status_cli)]
+    if os.name == "nt":
+        status_command.insert(0, sys.executable)
     subprocess.run(
         [
-            str(status_cli),
+            *status_command,
             "update",
             args.agent,
             state,

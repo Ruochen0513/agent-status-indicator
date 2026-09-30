@@ -8,9 +8,11 @@ New-Item -ItemType Directory -Force -Path $Bin | Out-Null
 Copy-Item (Join-Path $Root "bin\agent-status") $Bin -Force
 Copy-Item (Join-Path $Root "bin\agent-status-hook") $Bin -Force
 Copy-Item (Join-Path $Root "bin\agent-status-desktop") $Bin -Force
+Copy-Item (Join-Path $Root "bin\codex-status-exec") $Bin -Force
 Copy-Item (Join-Path $Root "bin\agent-status.cmd") $Bin -Force
 Copy-Item (Join-Path $Root "bin\agent-status-hook.cmd") $Bin -Force
 Copy-Item (Join-Path $Root "bin\agent-status-desktop.cmd") $Bin -Force
+Copy-Item (Join-Path $Root "bin\codex-status-exec.cmd") $Bin -Force
 
 $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
 $PathEntries = @($UserPath -split ";" | Where-Object { $_ })

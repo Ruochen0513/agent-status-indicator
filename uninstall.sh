@@ -57,4 +57,4 @@ if [[ "$KEEP_CONFIG" -eq 0 ]]; then
   rm -rf "$runtime_dir" 2>/dev/null || true
 fi
 
-echo "Uninstalled Agent Status Indicator Indicator."
+echo "Uninstalled Agent Status Indicator."

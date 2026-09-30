@@ -13,9 +13,16 @@ from pathlib import Path
 STATUS = Path(__file__).resolve().parent / "agent-status"
 
 
+def status_command() -> list[str]:
+    command = [str(STATUS)]
+    if os.name == "nt":
+        command.insert(0, sys.executable)
+    return command
+
+
 def update(state: str, message: str = "", session: str = "") -> None:
     sid = session or f"codex:exec:{os.getpid()}"
-    subprocess.run([str(STATUS), "update", "codex", state, message, "--session", sid], check=False)
+    subprocess.run([*status_command(), "update", "codex", state, message, "--session", sid], check=False)
 
 
 def state_for_event(event: dict) -> tuple[str | None, str]:
