@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN_DIR="$HOME/.local/bin"
-APP_DIR="$HOME/Library/Application Support/AgentStatusIndicator"
+APP_DIR="$HOME/Library/Application Support/agent-status-indicator"
 DESKTOP_DIR="$APP_DIR/desktop"
 
 mkdir -p "$BIN_DIR" "$DESKTOP_DIR"
