@@ -121,7 +121,11 @@ The generated `dist/AgentStatusIndicator` application is platform-specific. Tkin
 
 On Windows, run `powershell -ExecutionPolicy Bypass -File scripts/install-windows.ps1` from the repository, open a new terminal, and run `agent-status-desktop`. The installer adds the command wrappers to the current user's `PATH` and stores state under `%LOCALAPPDATA%`.
 
-By default, the installer does not modify Codex or Claude Code hook files. To merge the provided hook examples into your user config:
+On macOS, run `./scripts/install-macos.sh`, add `~/.local/bin` to your `PATH` in the current shell, and run `agent-status-desktop`. macOS does not use systemd or the GNOME extension. To start automatically, add the command to Login Items or create a LaunchAgent for `agent-status-desktop`.
+
+By default, the installer does not modify Codex or Claude Code hook files. Hooks are lifecycle callbacks executed by the agent runtime. They call `agent-status-hook`, which extracts the agent, event, message, and session id, then writes a state update. For example, `UserPromptSubmit`/`PreToolUse` set `working`, `PermissionRequest` sets `approval`, and `Stop` sets `idle`.
+
+To merge the provided hook examples into your user config:
 
 ```bash
 ./install.sh --merge-hooks
@@ -148,6 +152,8 @@ If you do not want the installer to merge configs, copy or merge these files you
 - Claude Code: `config/claude/settings.example.json` -> `~/.claude/settings.json`
 
 Keep existing settings and merge the `hooks` object rather than replacing the whole file.
+
+On Windows, use the installed `.cmd` command wrapper in hook entries, for example `agent-status-hook.cmd --agent codex --event PreToolUse`. The Windows installer currently installs the desktop app and command wrappers; hook configuration remains opt-in so existing Codex/Claude settings are never overwritten. On macOS/Linux, use `agent-status-hook` after adding `~/.local/bin` to `PATH`.
 
 ## Usage
 
@@ -347,6 +353,7 @@ gnome-extension/
 icons/
 scripts/
   build-desktop.sh
+  install-macos.sh
   install-windows.ps1
   package-extension.sh
 install.sh

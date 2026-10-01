@@ -79,7 +79,7 @@ if command -v gnome-extensions >/dev/null 2>&1; then
 fi
 
 if [[ "$MERGE_CODEX_HOOKS" -eq 1 || "$MERGE_CLAUDE_HOOKS" -eq 1 ]]; then
-  ROOT="$ROOT" MERGE_CODEX_HOOKS="$MERGE_CODEX_HOOKS" MERGE_CLAUDE_HOOKS="$MERGE_CLAUDE_HOOKS" /usr/bin/python3 - <<'PY'
+  ROOT="$ROOT" MERGE_CODEX_HOOKS="$MERGE_CODEX_HOOKS" MERGE_CLAUDE_HOOKS="$MERGE_CLAUDE_HOOKS" "${PYTHON_BIN:-python3}" - <<'PY'
 from __future__ import annotations
 
 import json
