@@ -18,6 +18,11 @@ for module_dir in MODULE_DIRS:
     if (module_dir / "agent_status_desktop.py").exists():
         sys.path.insert(0, str(module_dir))
         break
+else:
+    raise SystemExit(
+        "Desktop runtime is missing. Re-run ./install.sh or copy "
+        "desktop/agent_status_desktop.py to ~/.local/share/agent-status-indicator/desktop/"
+    )
 
 from agent_status_desktop import main  # noqa: E402
 

@@ -45,14 +45,20 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-mkdir -p "$HOME/.local/bin" "$HOME/.local/share/agent-status-indicator/icons" "$HOME/.local/share/agent-status-indicator/desktop" "$HOME/.config/systemd/user"
+DESKTOP_RUNTIME_DIR="$HOME/.local/share/agent-status-indicator/desktop"
+mkdir -p "$HOME/.local/bin" "$HOME/.local/share/agent-status-indicator/icons" "$DESKTOP_RUNTIME_DIR" "$HOME/.config/systemd/user"
 mkdir -p "$HOME/.local/share/gnome-shell/extensions/agent-status-indicator@Ruochen0513.github.io"
 install -m 0755 "$ROOT/bin/agent-status" "$HOME/.local/bin/agent-status"
 install -m 0755 "$ROOT/bin/agent-status-indicator" "$HOME/.local/bin/agent-status-indicator"
 install -m 0755 "$ROOT/bin/agent-status-hook" "$HOME/.local/bin/agent-status-hook"
 install -m 0755 "$ROOT/bin/codex-status-exec" "$HOME/.local/bin/codex-status-exec"
 install -m 0755 "$ROOT/bin/agent-status-desktop" "$HOME/.local/bin/agent-status-desktop"
-install -m 0644 "$ROOT/desktop/agent_status_desktop.py" "$HOME/.local/share/agent-status-indicator/desktop/agent_status_desktop.py"
+cp "$ROOT/desktop/agent_status_desktop.py" "$DESKTOP_RUNTIME_DIR/agent_status_desktop.py"
+chmod 0644 "$DESKTOP_RUNTIME_DIR/agent_status_desktop.py"
+if [[ ! -s "$DESKTOP_RUNTIME_DIR/agent_status_desktop.py" ]]; then
+  echo "Desktop runtime was not installed: $DESKTOP_RUNTIME_DIR/agent_status_desktop.py" >&2
+  exit 1
+fi
 install -m 0644 "$ROOT/icons"/agent-status-*.png "$HOME/.local/share/agent-status-indicator/icons/"
 if command -v systemctl >/dev/null 2>&1 && [[ "$(uname -s)" == "Linux" ]]; then
   install -m 0644 "$ROOT/config/systemd/agent-status.service" "$HOME/.config/systemd/user/agent-status.service"
