@@ -8,7 +8,16 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "desktop"))
+MODULE_DIRS = [
+    ROOT / "desktop",
+    Path.home() / ".local" / "share" / "agent-status-indicator" / "desktop",
+    Path.home() / "Library" / "Application Support" / "agent-status-indicator" / "desktop",
+    Path.home() / "AppData" / "Local" / "AgentStatusIndicator" / "desktop",
+]
+for module_dir in MODULE_DIRS:
+    if (module_dir / "agent_status_desktop.py").exists():
+        sys.path.insert(0, str(module_dir))
+        break
 
 from agent_status_desktop import main  # noqa: E402
 
