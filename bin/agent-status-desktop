@@ -4,13 +4,14 @@
 from __future__ import annotations
 
 import sys
+import os
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
 MODULE_DIRS = [
     ROOT / "desktop",
-    Path.home() / ".local" / "share" / "agent-status-indicator" / "desktop",
+    Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share") / "agent-status-indicator/desktop",
     Path.home() / "Library" / "Application Support" / "agent-status-indicator" / "desktop",
     Path.home() / "AppData" / "Local" / "AgentStatusIndicator" / "desktop",
 ]

@@ -47,8 +47,15 @@ def main(argv: list[str]) -> int:
     cmd = ["codex", "exec", "--json", *argv]
     session = f"codex:exec:{os.getpid()}"
     update("working", "codex exec", session)
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=None, text=True)
+    try:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=None, text=True)
+    except OSError as exc:
+        update("error", f"Unable to start codex: {exc}", session)
+        print(str(exc), file=sys.stderr)
+        return 127
     assert proc.stdout is not None
+    terminal_error = False
+    interrupted = False
     try:
         for line in proc.stdout:
             print(line, end="", flush=True)
@@ -56,18 +63,32 @@ def main(argv: list[str]) -> int:
                 event = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if event.get("type") == "thread.started" and event.get("thread_id"):
-                session = f"codex:{event['thread_id']}"
+            if not isinstance(event, dict):
+                continue
+            if event.get("type") in {"turn.failed", "error"}:
+                terminal_error = True
+            elif event.get("type") == "turn.completed":
+                terminal_error = False
             state, message = state_for_event(event)
             if state:
                 update(state, message, session)
+    except KeyboardInterrupt:
+        interrupted = True
+        proc.terminate()
     finally:
+        if interrupted:
+            try:
+                proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                proc.kill()
         returncode = proc.wait()
-        if returncode == 0:
+        if interrupted:
+            update("idle", "interrupted", session)
+        elif returncode == 0 and not terminal_error:
             update("idle", "completed", session)
         else:
-            update("error", f"exit {returncode}", session)
-    return returncode
+            update("error", "turn failed" if terminal_error else f"exit {returncode}", session)
+    return 130 if interrupted else returncode
 
 
 if __name__ == "__main__":

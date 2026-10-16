@@ -8,7 +8,7 @@ OUT="$ROOT/agent-status-indicator@Ruochen0513.github.io.shell-extension.zip"
 rm -f "$OUT"
 (
   cd "$EXT_DIR"
-  zip -q -r "$OUT" metadata.json extension.js stylesheet.css
+  zip -q -r "$OUT" metadata.json extension.js state.js stylesheet.css
 )
 
 echo "$OUT"

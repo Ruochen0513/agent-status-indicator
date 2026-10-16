@@ -10,6 +10,8 @@ mkdir -p "$BIN_DIR" "$DESKTOP_DIR"
 for script in agent-status agent-status-hook codex-status-exec agent-status-desktop; do
   install -m 0755 "$ROOT/bin/$script" "$BIN_DIR/$script"
 done
+install -m 0644 "$ROOT/bin/agent_status_state.py" "$BIN_DIR/agent_status_state.py"
+install -m 0644 "$ROOT/bin/agent_status_state.py" "$DESKTOP_DIR/agent_status_state.py"
 install -m 0644 "$ROOT/desktop/agent_status_desktop.py" "$DESKTOP_DIR/agent_status_desktop.py"
 
 echo "Installed Agent Status Indicator to $APP_DIR"

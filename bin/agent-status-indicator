@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+from agent_status_state import normalize_state, combined_state
 from pathlib import Path
 
 
@@ -45,7 +46,7 @@ def state_file() -> Path:
 
 
 def icon_dir() -> Path:
-    installed = Path.home() / ".local" / "share" / APP_NAME / "icons"
+    installed = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share") / APP_NAME / "icons"
     if installed.exists():
         return installed
     return Path(__file__).resolve().parent.parent / "icons"
@@ -53,24 +54,12 @@ def icon_dir() -> Path:
 
 def read_state() -> dict:
     try:
-        return json.loads(state_file().read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {
-            "agents": {
-                "codex": {"state": "idle", "message": ""},
-                "claude": {"state": "idle", "message": ""},
-            }
-        }
-
-
-def combined_state(state: dict) -> str:
-    agents = state.get("agents", {})
-    result = "idle"
-    for agent in ("codex", "claude"):
-        agent_state = agents.get(agent, {}).get("state", "idle")
-        if PRIORITY.get(agent_state, 0) > PRIORITY[result]:
-            result = agent_state
-    return result
+        loaded = json.loads(state_file().read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return normalize_state({})
+    if not isinstance(loaded, dict):
+        raise ValueError("State file must contain an object")
+    return normalize_state(loaded)
 
 
 def set_state(agent: str, status: str) -> None:
@@ -91,6 +80,7 @@ class Indicator:
         self.indicator.set_status(AppIndicator.IndicatorStatus.ACTIVE)
         self.indicator.set_menu(self.build_menu())
         self.last_icon = ""
+        self.state = normalize_state({})
         self.refresh()
         GLib.timeout_add_seconds(1, self.refresh)
 
@@ -114,8 +104,13 @@ class Indicator:
         return menu
 
     def refresh(self) -> bool:
-        state = read_state()
-        status = combined_state(state)
+        error = ""
+        try:
+            self.state = read_state()
+        except (OSError, ValueError) as exc:
+            error = f"Cannot read status: {exc}"
+        state = self.state
+        status = "error" if error else combined_state(state)
         icon_path = str(icon_dir() / f"agent-status-{status}.png")
         if icon_path != self.last_icon:
             self.indicator.set_icon_full(icon_path, f"Agent status: {status}")
@@ -129,7 +124,7 @@ class Indicator:
             message = item.get("message") or ""
             suffix = f" ({message})" if message else ""
             labels.append(f"{agent.capitalize()}: {state_name}{suffix}")
-        self.summary.set_label(" | ".join(labels))
+        self.summary.set_label(error or " | ".join(labels))
         return True
 
 

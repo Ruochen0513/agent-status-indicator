@@ -7,6 +7,8 @@ $Desktop = Join-Path $InstallRoot "desktop"
 New-Item -ItemType Directory -Force -Path $Bin | Out-Null
 New-Item -ItemType Directory -Force -Path $Desktop | Out-Null
 
+Copy-Item (Join-Path $Root "bin\agent_status_state.py") $Bin -Force
+Copy-Item (Join-Path $Root "bin\agent_status_state.py") $Desktop -Force
 Copy-Item (Join-Path $Root "bin\agent-status") $Bin -Force
 Copy-Item (Join-Path $Root "bin\agent-status-hook") $Bin -Force
 Copy-Item (Join-Path $Root "bin\agent-status-desktop") $Bin -Force

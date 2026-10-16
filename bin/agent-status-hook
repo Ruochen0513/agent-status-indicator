@@ -1,6 +1,5 @@
 #!/usr/bin/python3
-"""Generic hook adapter for Codex and Claude Code lifecycle events."""
-
+"""Translate supported agent lifecycle events into session-scoped updates."""
 from __future__ import annotations
 
 import argparse
@@ -8,32 +7,23 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
-
 EVENT_TO_STATE = {
-    "SessionStart": "idle",
-    "UserPromptSubmit": "working",
-    "PreToolUse": "working",
-    "PostToolUse": "working",
-    "PermissionRequest": "approval",
-    "Notification": "approval",
-    "Stop": "idle",
-    "SubagentStop": "idle",
-    "StopFailure": "error",
-    "PostToolUseFailure": "error",
-    "Error": "error",
+    "SessionStart": "idle", "SessionEnd": "idle", "Interrupt": "idle",
+    "UserPromptSubmit": "working", "PreToolUse": "working", "PostToolUse": "working",
+    "PermissionRequest": "approval", "Stop": "idle",
+    "StopFailure": "error", "PostToolUseFailure": "error", "Error": "error",
 }
 
 
 def parse_stdin() -> dict:
-    raw = sys.stdin.read().strip()
-    if not raw:
-        return {}
     try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        return {"raw": raw[:200]}
+        value = json.loads(sys.stdin.read())
+        return value if isinstance(value, dict) else {}
+    except ValueError:
+        return {}
 
 
 def message_from_payload(payload: dict) -> str:
@@ -54,70 +44,62 @@ def nested_get(payload: dict, path: tuple[str, ...]) -> str:
 
 
 def session_from_payload(payload: dict, agent: str) -> str:
-    candidates = [
-        ("session_id",),
-        ("sessionId",),
-        ("thread_id",),
-        ("threadId",),
-        ("conversation_id",),
-        ("conversationId",),
-        ("transcript_path",),
-        ("transcriptPath",),
-        ("cwd",),
-        ("params", "threadId"),
-        ("params", "thread_id"),
-    ]
-    for path in candidates:
+    for path in (
+        ("session_id",), ("sessionId",), ("thread_id",), ("threadId",),
+        ("conversation_id",), ("conversationId",),
+        ("params", "threadId"), ("params", "thread_id"),
+        ("transcript_path",), ("transcriptPath",),
+    ):
         value = nested_get(payload, path)
         if value:
             return f"{agent}:{value}"
-
-    for key in (
-        "CODEX_SESSION_ID",
-        "CODEX_THREAD_ID",
-        "CLAUDE_SESSION_ID",
-        "CLAUDE_CONVERSATION_ID",
-        "CLAUDE_PROJECT_DIR",
-        "PWD",
-    ):
+    keys = ("CODEX_SESSION_ID", "CODEX_THREAD_ID") if agent == "codex" else ("CLAUDE_SESSION_ID", "CLAUDE_CONVERSATION_ID")
+    for key in keys:
         value = os.environ.get(key)
         if value:
-            return f"{agent}:{key}:{value}"
+            return f"{agent}:{value}"
+    # A directory or transient hook-shell PID is not a session identity.
+    return ""
 
-    return f"{agent}:ppid:{os.getppid()}"
+
+def state_for_event(event: str, payload: dict) -> str | None:
+    if event == "SessionStart" and payload.get("source") == "compact":
+        return None
+    if event in {"SubagentStart", "SubagentStop"}:
+        return None  # These hooks carry the parent's session_id.
+    if event == "Notification":
+        return "approval" if payload.get("notification_type") == "permission_prompt" else None
+    return EVENT_TO_STATE.get(event)
 
 
 def main() -> int:
+    observed_at = time.time()
     parser = argparse.ArgumentParser()
     parser.add_argument("--agent", choices=["codex", "claude"], required=True)
     parser.add_argument("--event", required=True)
     parser.add_argument("--state", choices=["idle", "working", "approval", "error"])
     parser.add_argument("--session", default="")
     args = parser.parse_args()
-
     payload = parse_stdin()
-    state = args.state or EVENT_TO_STATE.get(args.event, "working")
-    message = message_from_payload(payload) or args.event
+    state = args.state or state_for_event(args.event, payload)
+    if state is None:
+        return 0
     session_id = args.session or session_from_payload(payload, args.agent)
+    if not session_id:
+        print("agent-status-hook: missing stable session id; update ignored", file=sys.stderr)
+        return 1
     status_cli = Path(__file__).resolve().parent / "agent-status"
-    status_command = [str(status_cli)]
-    if os.name == "nt":
-        status_command.insert(0, sys.executable)
-    subprocess.run(
-        [
-            *status_command,
-            "update",
-            args.agent,
-            state,
-            message,
-            "--session",
-            session_id,
-            "--event",
-            args.event,
-        ],
-        check=False,
-    )
-    return 0
+    result = subprocess.run([
+        sys.executable, str(status_cli), "update", args.agent, state,
+        message_from_payload(payload) or args.event,
+        "--session", session_id, "--event", args.event,
+        "--turn", str(payload.get("turn_id") or ""),
+        "--observed-at", str(observed_at),
+    ], check=False)
+    # Codex requires JSON output from Stop; an empty object adds no instructions.
+    if result.returncode == 0 and args.agent == "codex" and args.event == "Stop":
+        print("{}")
+    return result.returncode
 
 
 if __name__ == "__main__":

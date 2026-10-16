@@ -10,15 +10,17 @@ import shutil
 import subprocess
 import sys
 import tkinter as tk
-import time
 from pathlib import Path
 from tkinter import colorchooser, messagebox, ttk
 from typing import Any
 
 
+# Source checkout uses ../bin; installers copy the same module beside this file.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "bin"))
+from agent_status_state import normalize_state, combined_state
+
 APP_NAME = "agent-status-indicator"
 STATES = ("idle", "working", "approval", "error")
-PRIORITY = {"idle": 0, "working": 1, "approval": 2, "error": 3}
 DEFAULT_COLORS = {
     "idle": "#8b949e",
     "working": "#2ea043",
@@ -89,9 +91,11 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
     except (TypeError, ValueError):
         config["opacity"] = 0.96
     config["always_on_top"] = bool(config.get("always_on_top", True))
-    if config.get("click_action") not in {"menu", "settings", "none"}:
+    if not isinstance(config.get("click_action"), str) or config["click_action"] not in {"menu", "settings", "none"}:
         config["click_action"] = "menu"
-    colors = config.setdefault("colors", {})
+    if not isinstance(config.get("colors"), dict):
+        config["colors"] = {}
+    colors = config["colors"]
     for state in STATES:
         if not isinstance(colors.get(state), str) or not COLOR_RE.fullmatch(colors[state]):
             colors[state] = DEFAULT_COLORS[state]
@@ -109,59 +113,15 @@ def save_config(config: dict[str, Any]) -> None:
 def read_state() -> dict[str, Any]:
     try:
         loaded = json.loads(state_path().read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {"agents": {}}
-    return loaded if isinstance(loaded, dict) else {"agents": {}}
+    except FileNotFoundError:
+        return normalize_state({})
+    if not isinstance(loaded, dict):
+        raise ValueError("State file must contain an object")
+    return loaded
 
 
 def display_state(state: dict[str, Any]) -> dict[str, Any]:
-    """Rebuild agent summaries so direct file updates also honor session TTL."""
-    try:
-        ttl = max(1, int(state.get("ttl_seconds", 120)))
-    except (TypeError, ValueError):
-        ttl = 120
-    sessions = state.get("sessions")
-    if not isinstance(sessions, dict):
-        return state
-    agents: dict[str, dict[str, Any]] = {}
-    for agent in ("codex", "claude"):
-        items = sessions.get(agent)
-        if not isinstance(items, dict):
-            items = {}
-        best: dict[str, Any] = {"state": "idle", "message": "", "active_sessions": 0}
-        for session_id, item in items.items():
-            if not isinstance(item, dict):
-                continue
-            state_name = item.get("state", "idle")
-            if state_name not in STATES:
-                continue
-            try:
-                age = time.time() - float(item.get("updated_at", time.time()))
-            except (TypeError, ValueError):
-                age = 0
-            if (state_name in {"idle", "working"} and age > ttl) or (state_name == "error" and age > ttl * 10):
-                continue
-            if state_name != "idle":
-                best["active_sessions"] += 1
-            if PRIORITY[state_name] > PRIORITY[best["state"]]:
-                best.update({"state": state_name, "message": str(item.get("message") or ""), "session": session_id})
-        agents[agent] = best
-    state["agents"] = agents
-    return state
-
-
-def combined_state(state: dict[str, Any]) -> str:
-    result = "idle"
-    agents = state.get("agents")
-    if not isinstance(agents, dict):
-        return result
-    for item in agents.values():
-        if not isinstance(item, dict):
-            continue
-        state_name = item.get("state", "idle")
-        if PRIORITY.get(state_name, 0) > PRIORITY[result]:
-            result = state_name
-    return result
+    return normalize_state(state)
 
 
 def agent_summary(state: dict[str, Any]) -> str:
@@ -189,7 +149,7 @@ class DesktopIndicator:
     def __init__(self) -> None:
         self.config = load_config()
         self.state: dict[str, Any] = {"agents": {}}
-        self.state_mtime: float | None = None
+        self.read_error = ""
         self.drag_start: tuple[int, int, int, int] | None = None
         self.settings_window: tk.Toplevel | None = None
 
@@ -231,28 +191,31 @@ class DesktopIndicator:
             self.root.update_idletasks()
             x = max(0, self.root.winfo_screenwidth() - size - 24)
             y = max(0, self.root.winfo_screenheight() - size - 72)
+        # Recover a saved position after display resolution/monitor changes.
+        x = max(0, min(x, self.root.winfo_screenwidth() - size))
+        y = max(0, min(y, self.root.winfo_screenheight() - size))
         self.root.geometry(f"{size}x{size}+{x}+{y}")
 
     def _refresh(self) -> None:
         try:
-            mtime = state_path().stat().st_mtime
-        except OSError:
-            mtime = None
-        if mtime != self.state_mtime:
-            self.state_mtime = mtime
             self.state = display_state(read_state())
-        status = combined_state(self.state)
+            self.read_error = ""
+        except (OSError, ValueError) as exc:
+            self.read_error = f"Cannot read status: {exc}"
+        status = "error" if self.read_error else combined_state(self.state)
         size = self.config["size"]
         pad = max(3, size // 10)
         self.canvas.delete("all")
         self.canvas.create_oval(pad, pad, size - pad, size - pad, fill=self.config["colors"][status], outline="#ffffff", width=1)
-        summary = agent_summary(self.state)
+        summary = self.read_error or agent_summary(self.state)
         self.canvas.configure(cursor="hand2" if self.config["click_action"] != "none" else "arrow")
         self.root.title(f"Agent Status: {status} | {summary}")
 
     def _poll(self) -> None:
-        self._refresh()
-        self.root.after(400, self._poll)
+        try:
+            self._refresh()
+        finally:
+            self.root.after(400, self._poll)
 
     def _drag_start(self, event: tk.Event) -> None:
         self.drag_start = (event.x_root, event.y_root, self.root.winfo_x(), self.root.winfo_y())
@@ -281,7 +244,8 @@ class DesktopIndicator:
     def _show_menu(self, event: tk.Event) -> None:
         menu = tk.Menu(self.root, tearoff=False)
         menu.add_command(label=f"Agent Status: {combined_state(self.state)}", state="disabled")
-        menu.add_command(label=agent_summary(self.state), state="disabled")
+        menu.add_command(label=self.read_error or agent_summary(self.state), state="disabled")
+        menu.add_command(label=f"State: {state_path()}", state="disabled")
         menu.add_separator()
         menu.add_command(label="Settings", command=self.open_settings)
         menu.add_command(label="Set all idle", command=self.set_all_idle)

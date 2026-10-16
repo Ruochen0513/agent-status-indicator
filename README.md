@@ -114,10 +114,10 @@ The supplied mappings are:
 
 | Hook event | Result |
 | --- | --- |
-| `SessionStart` | `idle` initialization |
+| `SessionStart` (startup/resume/clear/fork) | `idle` initialization; compaction leaves active work unchanged |
 | `UserPromptSubmit`, `PreToolUse`, `PostToolUse` | `working` |
-| `PermissionRequest`, `Notification` | `approval` |
-| `Stop`, `SubagentStop` | `idle` |
+| `PermissionRequest`, permission-prompt `Notification` only | `approval` |
+| `Stop`, `SessionEnd`, `Interrupt` (Codex; when supported by the installed version) | `idle` |
 | `StopFailure`, `PostToolUseFailure`, `Error` | `error` |
 
 Hook configuration is opt-in because it modifies user-owned agent configuration files. Existing files are backed up before merging.
@@ -142,6 +142,16 @@ agent-status-hook.cmd --agent codex --event PreToolUse
 ```
 
 After changing hooks, restart existing Codex and Claude Code sessions. In Codex, review and trust the hook definitions with `/hooks`.
+
+A successful installation or a manual `agent-status-hook` test does **not** prove that Codex will run hooks automatically. Codex skips untrusted or modified hook definitions. Verify runtime registration and trust:
+
+```bash
+agent-status doctor --check-codex
+```
+
+`hooks.codex.runtime.status` must be `ready`; `needs_trust` means you must review the `agent-status-hook` entries in Codex `/hooks`. This check queries a fresh local Codex configuration without running a model or changing trust. Existing chats may still require restarting after hook changes. The basic `doctor` command only inspects files and explicitly reports runtime trust as `not_checked`.
+
+The installer queries the installed Codex protocol to select supported events. Some releases register the six core events but ignore `SessionEnd` and `Interrupt`; these are omitted on those releases. If capability detection is unavailable, the installer uses the six core events. The adapter still understands optional terminal events when a newer client can emit them.
 
 Manual source files:
 
@@ -221,7 +231,13 @@ Check the current state and restart the agent after installing hooks:
 agent-status get
 ```
 
-On Linux, also check the daemon:
+Use the built-in diagnostics to inspect state, sessions, hook configuration, and the installed GNOME extension:
+
+```bash
+agent-status doctor --check-codex
+```
+
+Updates work without the daemon. If you use the optional socket service, inspect it with:
 
 ```bash
 systemctl --user status agent-status.service
@@ -251,6 +267,29 @@ The expected Linux runtime file is:
 ~/.local/share/agent-status-indicator/desktop/agent_status_desktop.py
 ```
 
+### Upgrading an existing installation
+
+```bash
+bash install.sh --merge-hooks
+agent-status doctor --check-codex
+```
+
+The installer replaces this project's old hook handlers while preserving unrelated handlers and settings, backs up hook files, and uses an absolute hook command path. It also updates installations using the older `agent-status-indicator@yuhaozhang.github.io` UUID in place. Restart agent sessions and review/trust updated Codex hooks in `/hooks` after upgrading. GNOME caches extension modules: log out and back in to load updated extension code. The installer does not restart your desktop session.
+
+Use `--no-start` to install files without changing service/extension activation. If an old daemon is running, restart it before using the new state format: old releases still delete active sessions by timeout.
+
+### A session is stuck after a crash
+
+Active work, approvals and errors have no time limit. If an agent is killed without emitting a terminal event, the indicator cannot determine whether work completed. Inspect `agent-status doctor`, then clear the affected session explicitly:
+
+```bash
+agent-status update codex idle --session codex:SESSION_ID
+agent-status update codex idle   # reset all Codex sessions
+agent-status update all idle     # reset both agents
+```
+
+The GNOME menu also offers a reset action. Errors remain visible until that session resumes, ends, or is reset. A corrupt/unreadable state file is reported as an error, with the last valid state retained for diagnostics. `agent-status update all idle` backs up a corrupt file before resetting it.
+
 ### GNOME does not show the extension
 
 On X11, press `Alt+F2`, enter `r`, and press Enter. On Wayland, log out and log back in. Verify the extension with:
@@ -273,7 +312,8 @@ Run the test suite and static checks:
 
 ```bash
 python3 -m unittest discover -s tests -v
-python3 -m py_compile bin/agent-status bin/agent-status-hook bin/codex-status-exec bin/agent-status-desktop desktop/agent_status_desktop.py
+python3 -m py_compile bin/agent-status bin/agent_status_state.py bin/agent-status-hook bin/codex-status-exec bin/agent-status-desktop desktop/agent_status_desktop.py
+node --experimental-vm-modules tests/test_extension.mjs
 bash -n install.sh scripts/*.sh uninstall.sh
 ```
 
@@ -343,9 +383,13 @@ Hook 是 Codex/Claude Code 的生命周期回调。它们把 agent 事件转换�
 | 事件 | 状态 |
 | --- | --- |
 | `UserPromptSubmit`、`PreToolUse`、`PostToolUse` | `working` |
-| `PermissionRequest`、`Notification` | `approval` |
-| `Stop`、`SubagentStop` | `idle` |
+| `PermissionRequest`、权限类型的 `Notification` | `approval` |
+| `Stop`、`Interrupt`（Codex）、`SessionEnd` | `idle` |
 | `StopFailure`、`Error` | `error` |
+
+绿色不再因为 120 秒没有新事件而变灰。长任务保持运行状态，直到收到完成、中断、会话结束事件或手动重置。子代理结束、压缩上下文和普通通知不会清除主会话状态；只有权限通知会显示黄色。
+
+升级会兼容旧扩展 UUID，替换本项目旧 hook 并保留其他配置。升级后重启 agent，在 Codex `/hooks` 中审核新版 hook；GNOME 扩展代码需要注销再登录后加载。运行 `agent-status doctor` 可以查看状态文件、会话和扩展诊断；`agent-status doctor --check-codex` 还会查询 Codex 实际注册和信任状态。`needs_trust` 表示尚未完成 hook 审核，配置存在和手动测试通过不代表自动状态已接通。部分 Codex 版本只注册六个核心事件，安装器会根据本机协议省略不支持的事件。
 
 默认不修改用户配置，避免覆盖已有设置。启用方式：
 
@@ -378,7 +422,7 @@ Codex / Claude lifecycle events
         agent-status-hook
               |
               v
-  agent-status daemon or direct state update
+  locked atomic state-file transaction
               |
               v
   state.json + per-session state records
@@ -392,7 +436,13 @@ The state file contains two layers:
 - `sessions.codex` and `sessions.claude` store each session's state, message, event, and timestamp.
 - `agents.codex` and `agents.claude` contain priority-aggregated summaries for the UI.
 
-On Linux, the daemon accepts updates over a per-user Unix socket and periodically normalizes expired sessions. On macOS and Windows, the CLI and hook adapter fall back to direct atomic state-file updates when a Unix socket daemon is unavailable. Updates use a lock file and atomic replacement so concurrent hooks do not overwrite one another. Working and idle sessions expire after two minutes by default; error sessions remain longer for diagnosis.
+All platforms update state directly under an OS advisory lock and atomically replace the JSON file. Locks are released by the OS when a process exits; no age-based lock deletion can steal a live writer's lock. The Linux socket daemon remains as an optional compatibility transport with bounded request sizes and read timeouts. It no longer rewrites state every second, and hooks do not depend on socket availability or acknowledgements.
+
+Version 3 removes active-session TTLs, including when reading version 2 state files. Working, approval and error remain until an explicit lifecycle event changes them. Idle terminal records are retained for up to one day to reject delayed same-turn events; available turn IDs also prevent an old turn's Stop from clearing a newer turn. Python presentation clients share `bin/agent_status_state.py`; GNOME applies the same session priorities without using elapsed time. Session IDs come from the agent, never the working directory or a short-lived hook-shell PID. Hooks without an identity report an error instead of merging unrelated sessions.
+
+The GNOME indicator uses an explicitly sized symbolic icon and inline colors. Its refresh source survives read/parse failures, and enable/disable cleanly releases actors and timers. Missing state starts idle; malformed/unreadable state is shown as an error and retried. The menu shows per-agent state and session counts. Desktop clients similarly retain the last valid state on read failures and recover saved positions that fall outside the current screen.
+
+Event semantics follow the [official Codex hooks reference](https://learn.chatgpt.com/docs/hooks) and [Claude Code hooks reference](https://code.claude.com/docs/en/hooks). Configured events depend on the agent version and trusted hook definitions. A missing terminal event after a hard crash requires an explicit reset; elapsed time alone cannot establish completion.
 
 ## 许可证
 

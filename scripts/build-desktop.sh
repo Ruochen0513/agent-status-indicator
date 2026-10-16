@@ -10,6 +10,7 @@ if ! command -v "$PYINSTALLER" >/dev/null 2>&1; then
 fi
 
 "$PYINSTALLER" --noconfirm --clean --windowed \
+  --paths "$ROOT/bin" --hidden-import agent_status_state \
   --name AgentStatusIndicator \
   "$ROOT/desktop/agent_status_desktop.py"
 
