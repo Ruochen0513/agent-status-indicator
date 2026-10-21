@@ -1,9 +1,10 @@
 {
   "uuid": "agent-status-indicator@Ruochen0513.github.io",
   "name": "Agent Status Indicator",
-  "description": "Show local Codex and Claude Code status in the GNOME top bar.",
+  "description": "Show local Codex and Claude Code session status in the top bar: working, waiting for approval, idle, or error.\n\nRequires the separately installed agent-status companion and configured agent hooks. See the project website for setup and Codex hook trust instructions. The extension reads only a local status file; it does not access conversation logs or the network.",
   "shell-version": [
     "46"
   ],
-  "url": "https://github.com/Ruochen0513/agent-status-indicator"
+  "url": "https://github.com/Ruochen0513/agent-status-indicator",
+  "version-name": "1.0.0"
 }

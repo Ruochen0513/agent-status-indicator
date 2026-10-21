@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Prepare a GNOME Extensions submission archive containing only JavaScript, metadata and the MIT license.
+- Replace the extension's Python reset subprocess with setup instructions, add missing-companion guidance, and make state reads asynchronous with cancellation across enable/disable cycles.
+- Add archive validation and submission/reviewer documentation; keep declared compatibility limited to GNOME Shell 46.
+
 - Verify actual Codex hook registration and trust with `doctor --check-codex`; untrusted hooks are reported as inactive even when configuration files exist.
 - Generate Codex hook configurations from the installed runtime event capabilities and explain the mandatory trust review during installation.
 

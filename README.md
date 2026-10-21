@@ -288,7 +288,7 @@ agent-status update codex idle   # reset all Codex sessions
 agent-status update all idle     # reset both agents
 ```
 
-The GNOME menu also offers a reset action. Errors remain visible until that session resumes, ends, or is reset. A corrupt/unreadable state file is reported as an error, with the last valid state retained for diagnostics. `agent-status update all idle` backs up a corrupt file before resetting it.
+Reset sessions with the CLI. The GNOME menu links to setup instructions and does not launch companion scripts. Errors remain visible until that session resumes, ends, or is reset. A corrupt/unreadable state file is reported as an error, with the last valid state retained for diagnostics. `agent-status update all idle` backs up a corrupt file before resetting it.
 
 ### GNOME does not show the extension
 
@@ -317,11 +317,13 @@ node --experimental-vm-modules tests/test_extension.mjs
 bash -n install.sh scripts/*.sh uninstall.sh
 ```
 
-Package the GNOME extension:
+Prepare the GNOME Extensions submission archive (requires Python 3 and either `gnome-extensions` or `zip`):
 
 ```bash
 ./scripts/package-extension.sh
 ```
+
+The archive contains only the GNOME JavaScript client and MIT license. The companion and hooks require separate installation; the extension shows setup guidance until it receives state. See [GNOME submission notes](docs/gnome-submission.md) for listing text, reviewer notes, verification and the remaining human submission steps.
 
 ## Project Layout
 
@@ -440,7 +442,7 @@ All platforms update state directly under an OS advisory lock and atomically rep
 
 Version 3 removes active-session TTLs, including when reading version 2 state files. Working, approval and error remain until an explicit lifecycle event changes them. Idle terminal records are retained for up to one day to reject delayed same-turn events; available turn IDs also prevent an old turn's Stop from clearing a newer turn. Python presentation clients share `bin/agent_status_state.py`; GNOME applies the same session priorities without using elapsed time. Session IDs come from the agent, never the working directory or a short-lived hook-shell PID. Hooks without an identity report an error instead of merging unrelated sessions.
 
-The GNOME indicator uses an explicitly sized symbolic icon and inline colors. Its refresh source survives read/parse failures, and enable/disable cleanly releases actors and timers. Missing state starts idle; malformed/unreadable state is shown as an error and retried. The menu shows per-agent state and session counts. Desktop clients similarly retain the last valid state on read failures and recover saved positions that fall outside the current screen.
+The GNOME indicator uses an explicitly sized symbolic icon and inline colors. File reads are asynchronous, cancellable and limited to one pending operation. Its only external action is opening the public setup instructions on request; it never launches the Python companion. Its refresh source survives read/parse failures, and enable/disable cleanly releases actors and timers. Missing state starts idle; malformed/unreadable state is shown as an error and retried. The menu shows per-agent state and session counts. Desktop clients similarly retain the last valid state on read failures and recover saved positions that fall outside the current screen.
 
 Event semantics follow the [official Codex hooks reference](https://learn.chatgpt.com/docs/hooks) and [Claude Code hooks reference](https://code.claude.com/docs/en/hooks). Configured events depend on the agent version and trusted hook definitions. A missing terminal event after a hard crash requires an explicit reset; elapsed time alone cannot establish completion.
 

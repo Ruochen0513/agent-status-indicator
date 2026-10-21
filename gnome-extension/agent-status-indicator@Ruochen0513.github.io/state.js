@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Presentation only: lifecycle events, never elapsed time, determine status.
 export const PRIORITY = {idle: 0, working: 1, approval: 2, error: 3};
 export const COLORS = {idle: '#8b949e', working: '#2ea043', approval: '#d29922', error: '#f85149'};

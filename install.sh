@@ -86,7 +86,7 @@ fi
 install -m 0644 "$ROOT/gnome-extension/agent-status-indicator@Ruochen0513.github.io/metadata.json" "$EXTENSION_DIR/metadata.json"
 install -m 0644 "$ROOT/gnome-extension/agent-status-indicator@Ruochen0513.github.io/extension.js" "$EXTENSION_DIR/extension.js"
 install -m 0644 "$ROOT/gnome-extension/agent-status-indicator@Ruochen0513.github.io/state.js" "$EXTENSION_DIR/state.js"
-install -m 0644 "$ROOT/gnome-extension/agent-status-indicator@Ruochen0513.github.io/stylesheet.css" "$EXTENSION_DIR/stylesheet.css"
+install -m 0644 "$ROOT/LICENSE" "$EXTENSION_DIR/LICENSE"
 
 EXTENSION_DIR="$EXTENSION_DIR" EXTENSION_UUID="$EXTENSION_UUID" "${PYTHON_BIN:-python3}" - <<'PYMETA'
 import json
